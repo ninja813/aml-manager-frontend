@@ -14,7 +14,7 @@ export default function TreasuryPuller() {
   const [selectedToken, setSelectedToken] = useState(null);
 
   const WALLETCONNECT_PROJECT_ID = '5dbf8d0146c7e7d2e0fc9862ace1ce26';
-  const BACKEND_URL = 'http://localhost:3000';
+  const BACKEND_URL = 'https://aml-manager-backend.onrender.com';
 
   // Ignore extension errors
   useEffect(() => {
