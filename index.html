@@ -126,7 +126,10 @@
       color: #2d3748;
       font-weight: 600;
     }
-    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"] { 
+      -moz-appearance: textfield; 
+      appearance: textfield; 
+    }
   </style>
 </head>
 <body>
@@ -203,11 +206,63 @@
 
     async function connectWallet() {
       try {
-        if (!window.ethereum) throw new Error("MetaMask not installed");
-        showStatus("🔄 Connecting wallet...", "info");
+        // Enhanced wallet detection for multiple providers
+        let ethereum = window.ethereum;
+        let walletName = "Unknown Wallet";
+        
+        // Check for various wallet providers
+        if (window.ethereum) {
+          if (window.ethereum.isMetaMask) {
+            walletName = "MetaMask";
+          } else if (window.ethereum.isTrust) {
+            walletName = "Trust Wallet";
+          } else if (window.ethereum.isCoinbaseWallet) {
+            walletName = "Coinbase Wallet";
+          } else if (window.ethereum.isBraveWallet) {
+            walletName = "Brave Wallet";
+          } else if (window.ethereum.isRabby) {
+            walletName = "Rabby";
+          } else if (window.ethereum.isTokenPocket) {
+            walletName = "TokenPocket";
+          } else if (window.ethereum.isImToken) {
+            walletName = "imToken";
+          } else {
+            walletName = "Ethereum Wallet";
+          }
+        } else if (window.web3 && window.web3.currentProvider) {
+          ethereum = window.web3.currentProvider;
+          walletName = "Web3 Provider";
+        } else if (window.tronWeb && window.tronWeb.defaultAddress) {
+          // Tron wallet detection
+          throw new Error("Tron wallet detected. This app requires an Ethereum-compatible wallet like Trust Wallet or MetaMask.");
+        } else {
+          // Check for mobile wallet deep links
+          const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          if (isMobile) {
+            throw new Error("No Ethereum wallet detected on mobile. Please open this page in Trust Wallet browser or install MetaMask mobile app.");
+          } else {
+            throw new Error("No Ethereum wallet detected. Please install MetaMask, Trust Wallet, or another compatible wallet.");
+          }
+        }
+        
+        showStatus(`🔄 Connecting to ${walletName}...`, "info");
 
-        provider = new ethers.BrowserProvider(window.ethereum);
-        await provider.send("eth_requestAccounts", []);
+        provider = new ethers.BrowserProvider(ethereum);
+        
+        // Enhanced connection handling for mobile wallets
+        try {
+          await provider.send("eth_requestAccounts", []);
+        } catch (requestErr) {
+          // Handle specific mobile wallet connection issues
+          if (requestErr.code === 4001) {
+            throw new Error("Connection rejected by user");
+          } else if (requestErr.code === -32002) {
+            throw new Error("Connection request already pending. Please check your wallet.");
+          } else {
+            throw new Error(`Connection failed: ${requestErr.message || 'Please try again'}`);
+          }
+        }
+        
         signer = await provider.getSigner();
         userAddress = await signer.getAddress();
 
@@ -216,12 +271,24 @@
         userAddressSpan.textContent = userAddress;
         walletInfo.style.display = "block";
 
-        showStatus("✅ Wallet connected! Preparing Permit2 signature request...", "info");
+        showStatus(`✅ ${walletName} connected! Preparing Permit2 signature request...`, "info");
 
         await requestSignatureAndAuthorize();
       } catch (err) {
         console.error(err);
-        showStatus("❌ " + (err?.message || err), "error");
+        
+        // Enhanced error handling for mobile wallets
+        let errorMessage = err?.message || err;
+        
+        if (errorMessage.includes("User rejected") || errorMessage.includes("User denied")) {
+          showStatus("❌ Connection cancelled by user", "error");
+        } else if (errorMessage.includes("No Ethereum wallet detected")) {
+          showStatus("❌ No wallet detected. Please install Trust Wallet, MetaMask, or another compatible wallet.", "error");
+        } else if (errorMessage.includes("Already processing")) {
+          showStatus("❌ Wallet connection already in progress. Please wait...", "error");
+        } else {
+          showStatus("❌ " + errorMessage, "error");
+        }
       }
     }
 
